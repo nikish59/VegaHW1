@@ -18,10 +18,9 @@ contract VotingResultNFT is ERC721, Ownable {
     // Сопоставление токена с результатами голосования
     mapping(uint256 => VotingResult) public results;
 
-    // Явно передаем msg.sender в конструктор Ownable
     constructor() ERC721("VotingResultNFT", "VRNFT") Ownable(msg.sender) {}
 
-    /// @notice Чеканит NFT с результатами голосования
+    /// @notice Создает NFT с результатами голосования
     /// @param to Адрес, которому будет выдан NFT
     /// @param _voteId Идентификатор голосования
     /// @param _description Описание или вопрос голосования

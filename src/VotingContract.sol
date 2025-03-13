@@ -9,7 +9,7 @@ interface IVotingResultNFT {
     function mint(address to, uint256 _voteId, string memory _description, uint256 _yesVotes, uint256 _noVotes) external;
 }
 
-/// @title Контракт голосования с автоматическим чеканением NFT результатов
+/// @title Контракт голосования с автоматическим созданием NFT результатов
 contract VotingContract is Ownable {
     IERC20 public vegaToken;
     IVotingResultNFT public nftContract;
@@ -87,7 +87,7 @@ contract VotingContract is Ownable {
         }
     }
     
-    /// @notice Завершает голосование и автоматически чеканит NFT с результатами
+    /// @notice Завершает голосование и автоматически создает NFT с результатами
     function concludeVote(uint256 _voteId) public {
         Vote storage currentVote = votes[_voteId];
         require(!currentVote.concluded, "Vote already concluded");
@@ -95,7 +95,7 @@ contract VotingContract is Ownable {
         currentVote.concluded = true;
         emit VoteConcluded(_voteId, currentVote.yesVotes, currentVote.noVotes);
         
-        // Автоматическое чеканение NFT. Здесь NFT чеканится на адрес владельца контракта, но можно изменить логику по необходимости.
+        // Автоматическое чеканение NFT. Здесь NFT создается на адрес владельца контракта.
         nftContract.mint(owner(), _voteId, currentVote.description, currentVote.yesVotes, currentVote.noVotes);
     }
     

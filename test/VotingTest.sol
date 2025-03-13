@@ -27,7 +27,7 @@ contract VotingTest is Test {
         owner = address(this);
         token = new TestToken();
         nft = new VotingResultNFT();
-        // Передаем адреса токена и NFT в конструктор VotingContract
+        
         voting = new VotingContract(IERC20(address(token)), IVotingResultNFT(address(nft)));
 
         nft.transferOwnership(address(voting));

@@ -13,7 +13,7 @@ contract TestToken is ERC20 {
     }
 }
 
-/// @notice Тестовый контракт для проверки автоматического чеканения NFT с результатами голосования
+/// @notice Тестовый контракт для проверки автоматического создания NFT с результатами голосования
 contract VotingNFTTest is Test {
     TestToken public token;
     VotingResultNFT public nft;
@@ -26,7 +26,7 @@ contract VotingNFTTest is Test {
         owner = address(this);
         token = new TestToken();
         nft = new VotingResultNFT();
-        // Передаём адреса токена и NFT в конструктор VotingContract
+        
         voting = new VotingContract(IERC20(address(token)), IVotingResultNFT(address(nft)));
 
         nft.transferOwnership(address(voting));
@@ -43,13 +43,12 @@ contract VotingNFTTest is Test {
         return 18;
     }
 
-    /// @notice Тест: автоматическое чеканение NFT при достижении порога голосования
+    /// @notice Тест: автоматическое создание NFT при достижении порога голосования
     function testNFTMintedOnThreshold() public {
         // Создаём голосование с низким порогом, чтобы один голос завершил его автоматически
         voting.createVote("NFT Test Vote", 1 days, 50);
         uint256 voteId = 1;
-        // Выбираем параметры, дающие высокую силу голоса:
-        // stakeAmount = 1 * 10**18, stakePeriod = 10 часов (10 hours = 36000 секунд)
+       
         uint256 stakeAmount = 1 * 10 ** decimals();
         uint256 stakePeriod = 10 hours;
 
@@ -59,7 +58,7 @@ contract VotingNFTTest is Test {
         vm.prank(voter1);
         voting.vote(voteId, true, stakeAmount, stakePeriod);
 
-        // После голосования голосование должно быть завершено и NFT чеканен автоматически
+        // После голосования голосование должно быть завершено и NFT создан автоматически
         // Проверяем, что NFT с tokenId 0 существует и его владелец – владелец VotingContract (owner)
         address nftOwner = nft.ownerOf(0);
         assertEq(nftOwner, owner);
@@ -74,7 +73,7 @@ contract VotingNFTTest is Test {
         assertEq(noVotes, 0);
     }
 
-    /// @notice Тест: чеканение NFT после истечения дедлайна голосования
+    /// @notice Тест: создание NFT после истечения дедлайна голосования
     function testNFTMintedAfterDeadline() public {
         // Создаём голосование с высоким порогом, чтобы оно не завершилось автоматически голосами
         voting.createVote("NFT Deadline Vote", 1 days, 1e30);
@@ -97,7 +96,7 @@ contract VotingNFTTest is Test {
         // Вызываем вручную завершение голосования
         voting.concludeVote(voteId);
 
-        // После завершения голосования NFT должен быть чеканен
+        // После завершения голосования NFT должен быть создан
         address nftOwner = nft.ownerOf(0);
         assertEq(nftOwner, owner);
 
