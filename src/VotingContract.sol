@@ -1,30 +1,35 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.28;
 
 import "node_modules/@openzeppelin/contracts/access/Ownable.sol";
 import "node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+/// @notice Интерфейс для взаимодействия с контрактом NFT результатов голосования
+interface IVotingResultNFT {
+    function mint(address to, uint256 _voteId, string memory _description, uint256 _yesVotes, uint256 _noVotes) external;
+}
+
+/// @title Контракт голосования с автоматическим чеканением NFT результатов
 contract VotingContract is Ownable {
-    IERC20 public vegaToken; // Токен VegaVote (ERC20)
+    IERC20 public vegaToken;
+    IVotingResultNFT public nftContract;
     uint256 public voteCount;
-    uint256 public constant MAX_STAKE_PERIOD = 4 * 365 days; // Максимальный период стейкинга (4 года)
+    uint256 public constant MAX_STAKE_PERIOD = 4 * 365 days;
 
     // Структура голосования
     struct Vote {
         uint256 id;
         string description;
-        uint256 deadline; // Время окончания голосования
-        uint256 threshold; // Порог суммарной силы голосов для завершения голосования
+        uint256 deadline;
+        uint256 threshold;
         uint256 yesVotes;
         uint256 noVotes;
         bool concluded;
-        mapping(address => bool) hasVoted; // Проверка, голосовал ли адрес
+        mapping(address => bool) hasVoted;
     }
-
-    // Из-за наличия mapping внутри структуры нельзя сделать votes публичными напрямую
+    
     mapping(uint256 => Vote) internal votes;
 
-    // События для логирования действий
     event VoteCreated(uint256 indexed voteId, string description, uint256 deadline, uint256 threshold);
     event Voted(
         uint256 indexed voteId,
@@ -36,14 +41,14 @@ contract VotingContract is Ownable {
     );
     event VoteConcluded(uint256 indexed voteId, uint256 yesVotes, uint256 noVotes);
 
-    constructor(IERC20 _vegaToken) {
+    /// @param _vegaToken Адрес токена VegaVote (ERC20)
+    /// @param _nftContract Адрес контракта NFT для результатов голосования
+    constructor(IERC20 _vegaToken, IVotingResultNFT _nftContract) Ownable(msg.sender) {
         vegaToken = _vegaToken;
+        nftContract = _nftContract;
     }
-
-    /// @notice Инициализация голосования (только администратор)
-    /// @param _description Описание или вопрос голосования
-    /// @param _duration Продолжительность голосования (в секундах, не более 4 лет)
-    /// @param _threshold Порог суммарной силы голосов для завершения голосования
+    
+    /// @notice Создаёт голосование (только администратор)
     function createVote(string memory _description, uint256 _duration, uint256 _threshold) external onlyOwner {
         require(_duration <= MAX_STAKE_PERIOD, "Duration exceeds maximum allowed period");
         voteCount++;
@@ -53,30 +58,20 @@ contract VotingContract is Ownable {
         newVote.deadline = block.timestamp + _duration;
         newVote.threshold = _threshold;
         newVote.concluded = false;
-
+        
         emit VoteCreated(voteCount, _description, newVote.deadline, _threshold);
     }
-
-    /// @notice Участник голосует, стейкая токены, где сила голоса = stakeAmount * (stakePeriod)^2
-    /// @param _voteId Идентификатор голосования
-    /// @param _voteYes true, если голос "за", false - если "против"
-    /// @param _stakeAmount Количество токенов для стейкинга
-    /// @param _stakePeriod Период стейкинга (в секундах, не более 4 лет)
+    
+    /// @notice Функция голосования с расчетом силы голоса: stakeAmount * (stakePeriod)^2
     function vote(uint256 _voteId, bool _voteYes, uint256 _stakeAmount, uint256 _stakePeriod) external {
         require(_stakePeriod <= MAX_STAKE_PERIOD, "Stake period too long");
-
         Vote storage currentVote = votes[_voteId];
         require(block.timestamp < currentVote.deadline, "Voting period has ended");
         require(!currentVote.concluded, "Vote already concluded");
         require(!currentVote.hasVoted[msg.sender], "Address has already voted");
-
-        // Перевод токенов от участника в контракт (предварительно должно быть выполнено approve)
         require(vegaToken.transferFrom(msg.sender, address(this), _stakeAmount), "Token transfer failed");
 
-        // Вычисление силы голоса: votingPower = stakeAmount * (stakePeriod)^2
         uint256 votingPower = _stakeAmount * (_stakePeriod * _stakePeriod);
-
-        // Обновление результатов голосования
         if (_voteYes) {
             currentVote.yesVotes += votingPower;
         } else {
@@ -85,23 +80,26 @@ contract VotingContract is Ownable {
         currentVote.hasVoted[msg.sender] = true;
 
         emit Voted(_voteId, msg.sender, _voteYes, _stakeAmount, _stakePeriod, votingPower);
-
-        // Если суммарная сила голосов достигла или превысила порог, завершаем голосование
+        
+        // Если порог достигнут, завершаем голосование
         if (currentVote.yesVotes + currentVote.noVotes >= currentVote.threshold) {
             concludeVote(_voteId);
         }
     }
-
-    /// @notice Завершает голосование, отмечая его как завершённое и генерируя событие
-    /// @param _voteId Идентификатор голосования
-    function concludeVote(uint256 _voteId) internal {
+    
+    /// @notice Завершает голосование и автоматически чеканит NFT с результатами
+    function concludeVote(uint256 _voteId) public {
         Vote storage currentVote = votes[_voteId];
         require(!currentVote.concluded, "Vote already concluded");
+        require(block.timestamp >= currentVote.deadline || (currentVote.yesVotes + currentVote.noVotes >= currentVote.threshold), "Voting not ended yet");
         currentVote.concluded = true;
         emit VoteConcluded(_voteId, currentVote.yesVotes, currentVote.noVotes);
+        
+        // Автоматическое чеканение NFT. Здесь NFT чеканится на адрес владельца контракта, но можно изменить логику по необходимости.
+        nftContract.mint(owner(), _voteId, currentVote.description, currentVote.yesVotes, currentVote.noVotes);
     }
-
-    /// @notice Получить данные голосования (без информации о том, кто голосовал)
+    
+    /// @notice Получение информации о голосовании
     function getVote(uint256 _voteId) external view returns (
         uint256 id,
         string memory description,
